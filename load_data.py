@@ -48,7 +48,8 @@ class DataGenerator(IterableDataset):
         config={},
         device=torch.device("cpu"),
         cache=True,
-        augment_support_set=False
+        augment_support_set=False,
+        augmenter=None
     ):
         """
         Args:
@@ -85,6 +86,7 @@ class DataGenerator(IterableDataset):
         self.image_caching = cache
         self.stored_images = {}
         self.augment_support_set = augment_support_set
+        self.augmenter = augmenter
 
         if batch_type == "train":
             self.folders = self.metatrain_character_folders
@@ -117,7 +119,17 @@ class DataGenerator(IterableDataset):
         return image
 
     def augment_image(self, image):
-        augmenter = T.RandAugment()
+        if self.augmenter == "randaug":
+            augmenter = T.RandAugment()
+        elif self.augmenter == "autoaug_cifar10":
+            augmenter = T.AutoAugment(T.AutoAugmentPolicy.CIFAR10)
+        elif self.augmenter == "autoaug_imagenet":
+            augmenter = T.AutoAugment(T.AutoAugmentPolicy.IMAGENET)
+        elif self.augmenter == "autoaug_svhn":
+            augmenter = T.AutoAugment(T.AutoAugmentPolicy.SVHN)
+        else:
+            print(f'Augmenter {self.augmenter} not supported, defaulting to RandAug')
+            augmenter = T.RandAugment()
         image = augmenter(image)
         return image
 

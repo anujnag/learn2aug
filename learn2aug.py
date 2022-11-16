@@ -94,9 +94,14 @@ def main(config):
     else:
         device = torch.device("cpu")
 
-    writer = SummaryWriter(
-        f"runs/{config.num_classes}_{config.num_shot}_{config.random_seed}_{config.hidden_dim}"
-    )
+    if config.augment_support_set:
+        writer = SummaryWriter(
+            f"runs/{config.num_classes}_{config.num_shot}_{config.random_seed}_{config.hidden_dim}_{config.augmenter}"
+        )
+    else:
+        writer = SummaryWriter(
+            f"runs/{config.num_classes}_{config.num_shot}_{config.random_seed}_{config.hidden_dim}"
+        )    
 
     # Download Omniglot Dataset
     if not os.path.isdir("./omniglot_resized"):
@@ -114,7 +119,8 @@ def main(config):
         batch_type="train",
         device=device,
         cache=config.image_caching,
-        augment_support_set=config.augment_support_set
+        augment_support_set=config.augment_support_set,
+        augmenter=config.augmenter
     )
     train_loader = iter(
         torch.utils.data.DataLoader(
@@ -198,4 +204,5 @@ if __name__ == "__main__":
     parser.add_argument("--train_steps", type=int, default=25000)
     parser.add_argument("--image_caching", type=bool, default=True)
     parser.add_argument("--augment_support_set", type=bool, default=False)
+    parser.add_argument("--augmenter", type=str, default="randaug")
     main(parser.parse_args())
