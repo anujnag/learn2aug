@@ -117,9 +117,9 @@ class DataGenerator(IterableDataset):
         return image
 
     def augment_image(self, image):
-        hflipper = T.RandomHorizontalFlip(p=0.9)
-        flipped = hflipper(image)
-        return flipped
+        augmenter = T.RandAugment()
+        image = augmenter(image)
+        return image
 
     def _sample(self):
         """
