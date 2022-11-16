@@ -27,10 +27,11 @@ def initialize_weights(model):
 
 
 class MANN(nn.Module):
-    def __init__(self, num_classes, samples_per_class, hidden_dim):
+    def __init__(self, num_classes, samples_per_class, hidden_dim, device):
         super(MANN, self).__init__()
         self.num_classes = num_classes
         self.samples_per_class = samples_per_class
+        self.device = device
 
         self.layer1 = torch.nn.LSTM(num_classes + 784, hidden_dim, batch_first=True)
         self.layer2 = torch.nn.LSTM(hidden_dim, num_classes, batch_first=True)
@@ -49,7 +50,7 @@ class MANN(nn.Module):
         #############################
         #### YOUR CODE GOES HERE ####
         B, K_add_1, N, img_size = input_images.shape
-        final_labels = torch.cat((input_labels[:, :-1, :, :], torch.zeros((B, 1, N, N))), dim=1)
+        final_labels = torch.cat((input_labels[:, :-1, :, :], torch.zeros((B, 1, N, N), device=self.device)), dim=1)
         model_input = torch.cat((input_images, final_labels), dim=-1).reshape(B, -1, img_size + N)
         x, _ = self.layer1.to(torch.float64)(model_input)
         x, _ = self.layer2.to(torch.float64)(x)
@@ -141,7 +142,7 @@ def main(config):
     )
 
     # Create model
-    model = MANN(config.num_classes, config.num_shot + 1, config.hidden_dim)
+    model = MANN(config.num_classes, config.num_shot + 1, config.hidden_dim, device)
     model.to(device)
 
     # Create optimizer
