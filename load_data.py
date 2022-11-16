@@ -5,6 +5,8 @@ import torch
 from torch.utils.data import IterableDataset
 import time
 import imageio
+from PIL import Image
+import torchvision.transforms as T
 
 
 def get_images(paths, labels, nb_samples=None, shuffle=True):
@@ -46,6 +48,7 @@ class DataGenerator(IterableDataset):
         config={},
         device=torch.device("cpu"),
         cache=True,
+        augment_support_set=False
     ):
         """
         Args:
@@ -81,6 +84,7 @@ class DataGenerator(IterableDataset):
         self.device = device
         self.image_caching = cache
         self.stored_images = {}
+        self.augment_support_set = augment_support_set
 
         if batch_type == "train":
             self.folders = self.metatrain_character_folders
@@ -89,7 +93,7 @@ class DataGenerator(IterableDataset):
         else:
             self.folders = self.metatest_character_folders
 
-    def image_file_to_array(self, filename, dim_input):
+    def image_file_to_array(self, filename, dim_input, augment=False):
         """
         Takes an image path and returns numpy array
         Args:
@@ -100,13 +104,22 @@ class DataGenerator(IterableDataset):
         """
         if self.image_caching and (filename in self.stored_images):
             return self.stored_images[filename]
+
         image = imageio.imread(filename)  # misc.imread(filename)
+        if augment:
+            image = self.augment_image(image)
+
         image = image.reshape([dim_input])
         image = image.astype(np.float32) / 255.0
         image = 1.0 - image
         if self.image_caching:
             self.stored_images[filename] = image
         return image
+
+    def augment_image(self, image):
+        hflipper = T.RandomHorizontalFlip(p=0.9)
+        flipped = hflipper(image)
+        return flipped
 
     def _sample(self):
         """
@@ -155,6 +168,9 @@ class DataGenerator(IterableDataset):
             else:
                 train_images.append(self.image_file_to_array(img_path, 784))
                 train_labels.append(label)
+                if self.augment_support_set:
+                    train_images.append(self.image_file_to_array(img_path, 784, augment=True))
+                    train_labels.append(label)
 
         # Shuffle the query / test dataset
         test_dataset = list(zip(test_images, test_labels))
@@ -163,10 +179,15 @@ class DataGenerator(IterableDataset):
         test_images = list(test_images)
         test_labels = list(test_labels)
 
+        # Format the data into images [2K + 1, N, 784] and one-hot labels [2K + 1, N, N]
         # Format the data into images [K + 1, N, 784] and one-hot labels [K + 1, N, N]
-        images = np.vstack(train_images + test_images).reshape((self.num_samples_per_class, self.num_classes, -1))
-        labels = np.vstack(train_labels + test_labels).reshape((-1, self.num_classes, self.num_classes))
-                
+        if self.augment_support_set:
+            images = np.vstack(train_images + test_images).reshape((2 * self.num_samples_per_class - 1, self.num_classes, -1))
+            labels = np.vstack(train_labels + test_labels).reshape((-1, self.num_classes, self.num_classes))
+        else:
+            images = np.vstack(train_images + test_images).reshape((self.num_samples_per_class, self.num_classes, -1))
+            labels = np.vstack(train_labels + test_labels).reshape((-1, self.num_classes, self.num_classes))
+
         return images, labels
         #############################
 

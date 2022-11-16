@@ -113,6 +113,7 @@ def main(config):
         batch_type="train",
         device=device,
         cache=config.image_caching,
+        augment_support_set=config.augment_support_set
     )
     train_loader = iter(
         torch.utils.data.DataLoader(
@@ -195,4 +196,5 @@ if __name__ == "__main__":
     parser.add_argument("--learning_rate", type=float, default=1e-3)
     parser.add_argument("--train_steps", type=int, default=25000)
     parser.add_argument("--image_caching", type=bool, default=True)
+    parser.add_argument("--augment_support_set", type=bool, default=False)
     main(parser.parse_args())
