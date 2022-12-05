@@ -13,6 +13,8 @@ from load_data import DataGenerator
 from google_drive_downloader import GoogleDriveDownloader as gdd
 from torch.utils.tensorboard import SummaryWriter
 import torchvision
+from transformers import ViTFeatureExtractor, ViTModel
+from UNet import UNet, Encoder
 
 
 def initialize_weights(model):
@@ -50,13 +52,28 @@ class MANN(nn.Module):
         #############################
         #### YOUR CODE GOES HERE ####
         B, K_add_1, N, img_size = input_images.shape
-        final_labels = torch.cat((input_labels[:, :-1, :, :], torch.zeros((B, 1, N, N), device=self.device)), dim=1)
-        model_input = torch.cat((input_images, final_labels), dim=-1).reshape(B, -1, img_size + N)
+        final_labels = torch.cat(
+            (input_labels[:, :-1, :, :], torch.zeros((B, 1, N, N), device=self.device)),
+            dim=1,
+        )
+        model_input = torch.cat((input_images, final_labels), dim=-1).reshape(
+            B, -1, img_size + N
+        )
         x, _ = self.layer1.to(torch.float64)(model_input)
         x, _ = self.layer2.to(torch.float64)(x)
         x = x.reshape(B, K_add_1, N, N)
         return x
         #############################
+
+    def loss_vit(self, images, augmented_images):
+        feature_extractor = ViTFeatureExtractor.from_pretrained(
+            "google/vit-base-patch16-224-in21k"
+        )
+        model = ViTModel.from_pretrained("google/vit-base-patch16-224-in21k")
+        vit_features = feature_extractor(augmented_images, return_tensors="pt")
+        unet_repr = Encoder()(images)
+        distillation_loss = torch.nn.MSELoss(reduction="mean")(unet_repr, vit_features)
+        return distillation_loss
 
     def loss_function(self, preds, labels):
         """
@@ -71,7 +88,9 @@ class MANN(nn.Module):
         """
         #############################
         #### YOUR CODE GOES HERE ####
-        return F.cross_entropy(preds[:, -1, :, :], labels[:, -1, :, :], reduction="mean")
+        return F.cross_entropy(
+            preds[:, -1, :, :], labels[:, -1, :, :], reduction="mean"
+        )
         #############################
 
 
@@ -101,7 +120,7 @@ def main(config):
     else:
         writer = SummaryWriter(
             f"runs/{config.num_classes}_{config.num_shot}_{config.random_seed}_{config.hidden_dim}"
-        )    
+        )
 
     # Download Omniglot Dataset
     if not os.path.isdir("./omniglot_resized"):
@@ -120,7 +139,7 @@ def main(config):
         device=device,
         cache=config.image_caching,
         augment_support_set=config.augment_support_set,
-        augmenter=config.augmenter
+        augmenter=config.augmenter,
     )
     train_loader = iter(
         torch.utils.data.DataLoader(
@@ -182,7 +201,9 @@ def main(config):
             )
             pred = torch.argmax(pred[:, -1, :, :], axis=2)
             l = torch.argmax(l[:, -1, :, :], axis=2)
-            acc = pred.eq(l).sum().item() / (config.meta_batch_size * config.num_classes)
+            acc = pred.eq(l).sum().item() / (
+                config.meta_batch_size * config.num_classes
+            )
             print("Test Accuracy", acc)
             writer.add_scalar("Accuracy/test", acc, step)
 
