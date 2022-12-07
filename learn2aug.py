@@ -9,12 +9,14 @@ import math
 import numpy as np
 import torch.nn.functional as F
 from torch import nn, Tensor
+from tqdm import trange
 from load_data import DataGenerator
 from google_drive_downloader import GoogleDriveDownloader as gdd
 from torch.utils.tensorboard import SummaryWriter
 import torchvision
 import torchvision.transforms as T
 from transformers import ViTImageProcessor, ViTFeatureExtractor, ViTModel
+from transformers import AutoImageProcessor, ResNetModel
 from unet import UNet
 from PIL import Image
 
@@ -76,7 +78,7 @@ class MANN(nn.Module):
         distillation_loss = torch.nn.MSELoss(reduction="mean")(unet_repr, vit_features)
         return distillation_loss
 
-    def loss_function(self, preds, labels):
+    def loss_function(self, preds, labels, aug_img_feat, autoaug_img_feat):
         """
         Computes MANN loss
         Args:
@@ -91,13 +93,15 @@ class MANN(nn.Module):
         #### YOUR CODE GOES HERE ####
         return F.cross_entropy(
             preds[:, -1, :, :], labels[:, -1, :, :], reduction="mean"
-        )
+        ) + F.mse_loss(aug_img_feat, autoaug_img_feat)
         #############################
 
 
 def train_step(images, labels, model, optim, eval=False):
     predictions = model(images, labels)
-    loss = model.loss_function(predictions, labels)
+    aug_img_feat, autoaug_img_feat = extract_features(images.reshape(-1, 1, 28, 28))
+
+    loss = model.loss_function(predictions, labels, aug_img_feat, autoaug_img_feat)
     if not eval:
         optim.zero_grad()
         loss.backward()
@@ -119,15 +123,24 @@ def extract_features(image_batch):
 
     unet_model = UNet()
     augmenter = T.AutoAugment(T.AutoAugmentPolicy.CIFAR10)
-    feature_extractor = ViTImageProcessor.from_pretrained("google/vit-base-patch16-224-in21k")
-    vit_model = ViTModel.from_pretrained("google/vit-base-patch16-224-in21k")
+
+    # ViT
+    # feature_extractor = ViTImageProcessor.from_pretrained("google/vit-base-patch16-224-in21k")
+    # img_model = ViTModel.from_pretrained("google/vit-base-patch16-224-in21k")
+
+    # ResNet
+    feature_extractor = AutoImageProcessor.from_pretrained("microsoft/resnet-50")
+    img_model = ResNetModel.from_pretrained("microsoft/resnet-50")
 
     aug_imgs = unet_model(image_batch)
 
-    for idx in range(100):
+    for idx in trange(100):
         autoaug_img = augmenter(((1.0 - image_batch[idx]) * 255.0).to(torch.uint8))
-        aug_img_feat.append(embed_image(aug_imgs[idx], feature_extractor, vit_model))
-        autoaug_img_feat.append(embed_image(autoaug_img, feature_extractor, vit_model))
+        aug_img_feat.append(embed_image(aug_imgs[idx], feature_extractor, img_model))
+        autoaug_img_feat.append(embed_image(autoaug_img, feature_extractor, img_model))
+
+    aug_img_feat = torch.stack(aug_img_feat)
+    autoaug_img_feat = torch.stack(autoaug_img_feat)
 
     return aug_img_feat, autoaug_img_feat
 
@@ -213,11 +226,6 @@ def main(config):
         ## Sample Batch
         t0 = time.time()
         i, l = next(train_loader)
-        
-        aug_img_feat, autoaug_img_feat = extract_features(i.reshape(-1, 1, 28, 28))
-
-        import pdb; pdb.set_trace()
-        
         i, l = i.to(device), l.to(device)
         t1 = time.time()
 
