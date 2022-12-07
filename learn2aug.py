@@ -14,7 +14,7 @@ from google_drive_downloader import GoogleDriveDownloader as gdd
 from torch.utils.tensorboard import SummaryWriter
 import torchvision
 from transformers import ViTImageProcessor, ViTFeatureExtractor, ViTModel
-from UNet import UNet, Encoder
+from unet import UNet
 from PIL import Image
 
 def initialize_weights(model):
@@ -183,8 +183,11 @@ def main(config):
     optim = torch.optim.Adam(model.parameters(), lr=config.learning_rate)
     import time
 
-    unet_model = UNet(enc_chs=(1, 64, 128, 256), dec_chs=(256, 128, 64),
-                 retain_dim=True, out_sz=(28,28))
+    unet_model = UNet()
+    
+    # unet_model = UNet(enc_chs=(1, 64, 128, 256), dec_chs=(256, 128, 64),
+    #              retain_dim=True, out_sz=(28,28))
+
     feature_extractor = ViTImageProcessor.from_pretrained("google/vit-base-patch16-224-in21k")
     vit_model = ViTModel.from_pretrained("google/vit-base-patch16-224-in21k")
 
@@ -193,7 +196,7 @@ def main(config):
         ## Sample Batch
         t0 = time.time()
         i, l = next(train_loader)
-        out, repr = unet_model(i.reshape(-1, 1, 28, 28))
+        out = unet_model(i.reshape(-1, 1, 28, 28))
         import pdb; pdb.set_trace()
         print(embed_image(out[0], feature_extractor, vit_model).shape)
         i, l = i.to(device), l.to(device)
