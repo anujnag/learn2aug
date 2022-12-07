@@ -25,10 +25,11 @@ class Encoder(nn.Module):
 
     def forward(self, x):
         ftrs = []
-        for block in self.enc_blocks:
+        for i, block in enumerate(self.enc_blocks):
             x = block(x)
             ftrs.append(x)
-            x = self.pool(x)
+            if i >= len(self.enc_blocks) - 2:
+                x = self.pool(x)
         return ftrs
 
 
@@ -75,8 +76,9 @@ class UNet(nn.Module):
 
     def forward(self, x):
         enc_ftrs = self.encoder(x)
+        repr = enc_ftrs[::-1][0]
         out = self.decoder(enc_ftrs[::-1][0], enc_ftrs[::-1][1:])
         out = self.head(out)
         if self.retain_dim:
             out = F.interpolate(out, self.out_sz)
-        return out
+        return out, repr
