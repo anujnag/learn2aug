@@ -98,8 +98,17 @@ class MANN(nn.Module):
 
 
 def train_step(images, labels, model, optim, eval=False):
+    B, K_add_1, N, img_size = images.shape
+    
+    # Extract features of UNet output and autoaug images
+    aug_imgs, aug_img_feat, autoaug_img_feat = extract_features(images[:, :-1, :, :].reshape(-1, 1, 28, 28))
+
+    # Include augmented images in support set
+    aug_imgs = aug_imgs.reshape(B, K_add_1 - 1, N, img_size)
+    images = torch.cat((aug_imgs, images), dim=1)
+    labels = torch.cat((labels[:, :-1, :, :], labels), dim=1)
+
     predictions = model(images, labels)
-    aug_img_feat, autoaug_img_feat = extract_features(images.reshape(-1, 1, 28, 28))
 
     loss = model.loss_function(predictions, labels, aug_img_feat, autoaug_img_feat)
     if not eval:
@@ -134,7 +143,7 @@ def extract_features(image_batch):
 
     aug_imgs = unet_model(image_batch)
 
-    for idx in trange(100):
+    for idx in range(image_batch.shape[0]):
         autoaug_img = augmenter(((1.0 - image_batch[idx]) * 255.0).to(torch.uint8))
         aug_img_feat.append(embed_image(aug_imgs[idx], feature_extractor, img_model))
         autoaug_img_feat.append(embed_image(autoaug_img, feature_extractor, img_model))
@@ -142,7 +151,7 @@ def extract_features(image_batch):
     aug_img_feat = torch.stack(aug_img_feat)
     autoaug_img_feat = torch.stack(autoaug_img_feat)
 
-    return aug_img_feat, autoaug_img_feat
+    return aug_imgs, aug_img_feat, autoaug_img_feat
 
 def main(config):
     print(config)
