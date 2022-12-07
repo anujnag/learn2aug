@@ -13,9 +13,9 @@ from load_data import DataGenerator
 from google_drive_downloader import GoogleDriveDownloader as gdd
 from torch.utils.tensorboard import SummaryWriter
 import torchvision
-from transformers import ViTFeatureExtractor, ViTModel
+from transformers import ViTImageProcessor, ViTFeatureExtractor, ViTModel
 from UNet import UNet, Encoder
-
+from PIL import Image
 
 def initialize_weights(model):
     if type(model) in [nn.Linear]:
@@ -69,7 +69,7 @@ class MANN(nn.Module):
         feature_extractor = ViTFeatureExtractor.from_pretrained(
             "google/vit-base-patch16-224-in21k"
         )
-        model = ViTModel.from_pretrained("google/vit-base-patch16-224-in21k")
+        # model = ViTModel.from_pretrained("google/vit-base-patch16-224-in21k")
         vit_features = feature_extractor(augmented_images, return_tensors="pt")
         unet_repr = Encoder()(images)
         distillation_loss = torch.nn.MSELoss(reduction="mean")(unet_repr, vit_features)
@@ -102,6 +102,15 @@ def train_step(images, labels, model, optim, eval=False):
         loss.backward()
         optim.step()
     return predictions.detach(), loss.detach()
+
+def embed_image(image, feature_extractor, vitmodel):
+    inputs = feature_extractor(image.repeat(3,1,1), return_tensors="pt")
+
+    with torch.no_grad():
+        outputs = vitmodel(**inputs)
+
+    last_hidden_states = outputs.last_hidden_state
+    return last_hidden_states.view(1,-1)
 
 
 def main(config):
@@ -174,11 +183,19 @@ def main(config):
     optim = torch.optim.Adam(model.parameters(), lr=config.learning_rate)
     import time
 
+    unet_model = UNet(enc_chs=(1, 64, 128, 256), dec_chs=(256, 128, 64),
+                 retain_dim=True, out_sz=(28,28))
+    feature_extractor = ViTImageProcessor.from_pretrained("google/vit-base-patch16-224-in21k")
+    vit_model = ViTModel.from_pretrained("google/vit-base-patch16-224-in21k")
+
     times = []
     for step in range(config.train_steps):
         ## Sample Batch
         t0 = time.time()
         i, l = next(train_loader)
+        out, repr = unet_model(i.reshape(-1, 1, 28, 28))
+        import pdb; pdb.set_trace()
+        print(embed_image(out[0], feature_extractor, vit_model).shape)
         i, l = i.to(device), l.to(device)
         t1 = time.time()
 
