@@ -13,6 +13,7 @@ from load_data import DataGenerator
 from google_drive_downloader import GoogleDriveDownloader as gdd
 from torch.utils.tensorboard import SummaryWriter
 import torchvision
+import torchvision.transforms as T
 from transformers import ViTImageProcessor, ViTFeatureExtractor, ViTModel
 from unet import UNet
 from PIL import Image
@@ -112,6 +113,23 @@ def embed_image(image, feature_extractor, vitmodel):
     last_hidden_states = outputs.last_hidden_state
     return last_hidden_states.view(1,-1)
 
+def extract_features(image_batch):
+    aug_img_feat = []
+    autoaug_img_feat = []
+
+    unet_model = UNet()
+    augmenter = T.AutoAugment(T.AutoAugmentPolicy.CIFAR10)
+    feature_extractor = ViTImageProcessor.from_pretrained("google/vit-base-patch16-224-in21k")
+    vit_model = ViTModel.from_pretrained("google/vit-base-patch16-224-in21k")
+
+    aug_imgs = unet_model(image_batch)
+
+    for idx in range(100):
+        autoaug_img = augmenter(((1.0 - image_batch[idx]) * 255.0).to(torch.uint8))
+        aug_img_feat.append(embed_image(aug_imgs[idx], feature_extractor, vit_model))
+        autoaug_img_feat.append(embed_image(autoaug_img, feature_extractor, vit_model))
+
+    return aug_img_feat, autoaug_img_feat
 
 def main(config):
     print(config)
@@ -122,14 +140,18 @@ def main(config):
     else:
         device = torch.device("cpu")
 
-    if config.augment_support_set:
-        writer = SummaryWriter(
-            f"runs/{config.num_classes}_{config.num_shot}_{config.random_seed}_{config.hidden_dim}_{config.augmenter}"
+    writer = SummaryWriter(
+            f"runs/{config.num_classes}_{config.num_shot}_{config.random_seed}_{config.hidden_dim}_test"
         )
-    else:
-        writer = SummaryWriter(
-            f"runs/{config.num_classes}_{config.num_shot}_{config.random_seed}_{config.hidden_dim}"
-        )
+
+    # if config.augment_support_set:
+    #     writer = SummaryWriter(
+    #         f"runs/{config.num_classes}_{config.num_shot}_{config.random_seed}_{config.hidden_dim}_{config.augmenter}"
+    #     )
+    # else:
+    #     writer = SummaryWriter(
+    #         f"runs/{config.num_classes}_{config.num_shot}_{config.random_seed}_{config.hidden_dim}"
+    #     )
 
     # Download Omniglot Dataset
     if not os.path.isdir("./omniglot_resized"):
@@ -183,22 +205,19 @@ def main(config):
     optim = torch.optim.Adam(model.parameters(), lr=config.learning_rate)
     import time
 
-    unet_model = UNet()
-    
     # unet_model = UNet(enc_chs=(1, 64, 128, 256), dec_chs=(256, 128, 64),
     #              retain_dim=True, out_sz=(28,28))
-
-    feature_extractor = ViTImageProcessor.from_pretrained("google/vit-base-patch16-224-in21k")
-    vit_model = ViTModel.from_pretrained("google/vit-base-patch16-224-in21k")
 
     times = []
     for step in range(config.train_steps):
         ## Sample Batch
         t0 = time.time()
         i, l = next(train_loader)
-        out = unet_model(i.reshape(-1, 1, 28, 28))
+        
+        aug_img_feat, autoaug_img_feat = extract_features(i.reshape(-1, 1, 28, 28))
+
         import pdb; pdb.set_trace()
-        print(embed_image(out[0], feature_extractor, vit_model).shape)
+        
         i, l = i.to(device), l.to(device)
         t1 = time.time()
 
