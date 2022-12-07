@@ -17,7 +17,7 @@ import torchvision
 import torchvision.transforms as T
 from transformers import ViTImageProcessor, ViTFeatureExtractor, ViTModel
 from transformers import AutoImageProcessor, ResNetModel
-from unet import UNet
+from UNet import UNet
 from PIL import Image
 
 def initialize_weights(model):
@@ -231,7 +231,7 @@ def main(config):
     #              retain_dim=True, out_sz=(28,28))
 
     times = []
-    for step in range(config.train_steps):
+    for step in trange(config.train_steps):
         ## Sample Batch
         t0 = time.time()
         i, l = next(train_loader)
@@ -241,6 +241,7 @@ def main(config):
         ## Train
         _, ls = train_step(i, l, model, optim)
         t2 = time.time()
+        print("Train Loss: ", ls.cpu().numpy())
         writer.add_scalar("Loss/train", ls, step)
         times.append([t1 - t0, t2 - t1])
 
